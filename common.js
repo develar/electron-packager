@@ -11,6 +11,10 @@ const series = require('run-series')
 var archs = ['ia32', 'x64']
 var platforms = ['darwin', 'linux', 'mas', 'win32']
 
+Promise.config({
+  longStackTraces: true
+})
+
 function parseCLIArgs (argv) {
   var args = minimist(argv, {
     boolean: [
@@ -240,21 +244,21 @@ module.exports = {
     })
   },
 
-  normalizeExt: function normalizeExt (filename, targetExt, cb) {
+  normalizeExt: function normalizeExt (filename, targetExt) {
     // Forces a filename to a given extension and fires the given callback with the normalized filename,
     // if it exists.  Otherwise reports the error from the fs.stat call.
     // (Used for resolving icon filenames, particularly during --all runs.)
 
     // This error path is used by win32.js if no icon is specified
-    if (!filename) return cb(new Error('No filename specified to normalizeExt'))
+    if (!filename) return Promise.resolve(null)
 
     var ext = path.extname(filename)
     if (ext !== targetExt) {
       filename = filename.slice(0, filename.length - ext.length) + targetExt
     }
 
-    fs.stat(filename, function (err) {
-      cb(err, err ? null : filename)
-    })
+    return promisifiedFs.stat(filename)
+      .thenReturn(filename)
+      .catch((e) => null)
   }
 }
