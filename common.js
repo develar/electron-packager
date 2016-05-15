@@ -3,10 +3,12 @@
 const asar = require('asar')
 const child = require('child_process')
 const fs = require('fs-extra')
+const promisifiedFs = require('fs-extra-p')
 const minimist = require('minimist')
-const os = require('os')
 const path = require('path')
 const series = require('run-series')
+const Promise = require('bluebird')
+const sanitize = require('sanitize-filename')
 
 var archs = ['ia32', 'x64']
 var platforms = ['darwin', 'linux', 'mas', 'win32']
@@ -168,7 +170,7 @@ module.exports = {
   generateFinalBasename: generateFinalBasename,
   generateFinalPath: generateFinalPath,
 
-  initializeApp: function initializeApp (opts, templatePath, appRelativePath, callback) {
+  initializeApp: function initializeApp (opts, buildDir, appRelativePath, callback) {
     // Performs the following initial operations for an app:
     // * Creates temporary directory
     // * Copies template into temporary directory
@@ -176,21 +178,11 @@ module.exports = {
     // * Prunes non-production node_modules (if opts.prune is set)
     // * Creates an asar (if opts.asar is set)
 
-    var tempPath
-    if (opts.tmpdir === false) {
-      tempPath = generateFinalPath(opts)
-    } else {
-      tempPath = path.join(opts.tmpdir || os.tmpdir(), 'electron-packager', `${opts.platform}-${opts.arch}`, generateFinalBasename(opts))
-    }
-
     // Path to `app` directory
-    var appPath = path.join(tempPath, appRelativePath)
+    var appPath = path.join(buildDir, appRelativePath)
     var resourcesPath = path.resolve(appPath, '..')
 
     var operations = [
-      function (cb) {
-        fs.move(templatePath, tempPath, {clobber: true}, cb)
-      },
       function (cb) {
         fs.copy(opts.dir, appPath, {filter: userIgnoreFilter(opts), dereference: true}, cb)
       },
@@ -227,18 +219,17 @@ module.exports = {
     series(operations, function (err) {
       if (err) return callback(err)
       // Resolve to path to temporary app folder for platform-specific processes to use
-      callback(null, tempPath)
+      callback(null, buildDir)
     })
   },
 
   moveApp: function finalizeApp (opts, tempPath, callback) {
-    var finalPath = generateFinalPath(opts)
-
     if (opts.tmpdir === false) {
-      callback(null, finalPath)
+      callback(null, tempPath)
       return
     }
 
+    var finalPath = generateFinalPath(opts)
     fs.move(tempPath, finalPath, function (err) {
       callback(err, finalPath)
     })
@@ -260,5 +251,9 @@ module.exports = {
     return promisifiedFs.stat(filename)
       .thenReturn(filename)
       .catch((e) => null)
+  },
+
+  sanitizeExecutableFilename: function (name) {
+    return sanitize(name)
   }
 }

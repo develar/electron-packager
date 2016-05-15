@@ -114,17 +114,18 @@ function createSeries (opts, archs, platforms) {
         if (err) return callback(err)
 
         function createApp (comboOpts) {
-          var buildParentDir
-          if (useTempDir) {
-            buildParentDir = tempBase
-          } else {
-            buildParentDir = opts.out || process.cwd()
-          }
-          var buildDir = path.join(buildParentDir, `${platform}-${arch}-template`)
           console.error(`Packaging app for platform ${platform} ${arch} using electron v${version}`)
+
+          var buildDir
+          if (opts.tmpdir === false) {
+            buildDir = common.generateFinalPath(opts)
+          } else {
+            buildDir = path.join(opts.tmpdir || os.tmpdir(), 'electron-packager', `${opts.platform}-${opts.arch}`, common.generateFinalBasename(opts))
+          }
+
           series([
             function (cb) {
-              fs.mkdirs(buildDir, cb)
+              fs.emptyDir(buildDir, cb)
             },
             function (cb) {
               extract(zipPath, {dir: buildDir}, cb)

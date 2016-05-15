@@ -5,6 +5,7 @@ const fs = require('fs-extra-p')
 const path = require('path')
 const plist = require('plist')
 const sign = require('electron-osx-sign')
+const Promise = require('bluebird')
 
 function rename (basePath, oldName, newName) {
   return fs.move(path.join(basePath, oldName), path.join(basePath, newName))

@@ -1,6 +1,6 @@
 {
-  "name": "electron-packager",
-  "version": "7.0.1",
+  "name": "electron-packager-tf",
+  "version": "7.1.0",
   "description": "Package and distribute your Electron app with OS-specific bundles (.app, .exe etc) via JS or CLI",
   "main": "index.js",
   "bin": {
@@ -29,7 +29,8 @@
     "plist": "^1.2.0",
     "rcedit": "^0.5.0",
     "resolve": "^1.1.7",
-    "run-series": "^1.1.4"
+    "run-series": "^1.1.4",
+    "sanitize-filename": "^1.6.0"
   },
   "devDependencies": {
     "buffer-equal": "^1.0.0",
