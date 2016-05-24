@@ -64,6 +64,9 @@ function asarApp (appPath, asarOptions) {
 }
 
 function generateFinalBasename (opts) {
+  if (opts.generateFinalBasename != null) {
+    return opts.generateFinalBasename(opts)
+  }
   return `${opts.name}-${opts.platform}-${opts.arch}`
 }
 

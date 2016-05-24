@@ -110,7 +110,7 @@ function createPromise (opts, archs, platforms) {
 
     return (useTempDir ? promisifiedFs.remove(tempBase) : Promise.resolve())
       .then(() => {
-        console.log(`Packaging app for platform ${platform} ${arch} using electron v${version}`)
+        console.log(`Packaging app for platform ${platform} ${arch} using electron ${version} to ${path.relative(process.cwd(), finalPath)}`)
 
         if (useTempDir && common.isPlatformMac(platform)) {
           return Promise.promisify(testSymlink)()
