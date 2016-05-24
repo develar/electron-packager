@@ -1,13 +1,15 @@
 'use strict'
 
+const Promise = require('bluebird')
 const common = require('./common')
-const download = require('electron-download')
+const download = Promise.promisify(require('electron-download'))
 const extract = require('extract-zip')
 const fs = require('fs-extra')
-const getPackageInfo = require('get-package-info')
+const promisifiedFs = require('fs-extra-p')
+const getPackageInfo = Promise.promisify(require('get-package-info'))
 const os = require('os')
 const path = require('path')
-const resolve = require('resolve')
+const resolve = Promise.promisify(require('resolve'), {multiArgs: true})
 const series = require('run-series')
 
 var supportedArchs = common.archs.reduce(function (result, arch) {
@@ -40,34 +42,29 @@ function validateList (list, supported, name) {
   return list
 }
 
-function getNameAndVersion (opts, dir, cb) {
+function getNameAndVersion (opts, dir) {
   var props = []
   if (!opts.name) props.push(['productName', 'name'])
   if (!opts.version) props.push(['dependencies.electron-prebuilt', 'devDependencies.electron-prebuilt'])
 
   // Name and version provided, no need to infer
-  if (props.length === 0) return cb(null)
+  if (props.length === 0) return Promise.resolve()
 
   // Search package.json files to infer name and version from
-  getPackageInfo(props, dir, function (err, result) {
-    if (err) return cb(err)
-    if (result.values.productName) opts.name = result.values.productName
-    if (result.values['dependencies.electron-prebuilt']) {
-      resolve('electron-prebuilt', {
-        basedir: path.dirname(result.source['dependencies.electron-prebuilt'].src)
-      }, function (err, res, pkg) {
-        if (err) return cb(err)
-        opts.version = pkg.version
-        return cb(null)
-      })
-    } else {
-      return cb(null)
-    }
-  })
+  return getPackageInfo(props, dir)
+    .then((result) => {
+      if (result.values.productName) opts.name = result.values.productName
+      if (result.values['dependencies.electron-prebuilt']) {
+        return resolve('electron-prebuilt', {basedir: path.dirname(result.source['dependencies.electron-prebuilt'].src)})
+          .then((results) => {
+            opts.version = results[1].version
+          })
+      }
+    })
 }
 
-function createSeries (opts, archs, platforms) {
-  var tempBase = path.join(opts.tmpdir || os.tmpdir(), 'electron-packager')
+function createPromise (opts, archs, platforms) {
+  const tempBase = path.join(opts.tmpdir || os.tmpdir(), 'electron-packager')
 
   function testSymlink (cb) {
     var testPath = path.join(tempBase, 'symlink-test')
@@ -81,9 +78,10 @@ function createSeries (opts, archs, platforms) {
         fs.symlink(testFile, testLink, cb)
       }
     ], function (err) {
-      var result = !err
+      const result = !err
       fs.remove(testPath, function () {
-        cb(result) // ignore errors on cleanup
+        // ignore errors on cleanup
+        cb(null, result)
       })
     })
   }
@@ -97,114 +95,103 @@ function createSeries (opts, archs, platforms) {
     })
   })
 
-  var tasks = []
-  var useTempDir = opts.tmpdir !== false
-  if (useTempDir) {
-    tasks.push(function (cb) {
-      fs.remove(tempBase, cb)
-    })
-  }
-  return tasks.concat(combinations.map(function (combination) {
-    var arch = combination.arch
-    var platform = combination.platform
-    var version = combination.version
+  const useTempDir = opts.tmpdir !== false
+  return Promise.mapSeries(combinations, (combination) => {
+    const arch = combination.arch
+    const platform = combination.platform
+    const version = combination.version
 
-    return function (callback) {
-      download(combination, function (err, zipPath) {
-        if (err) return callback(err)
+    // Create delegated options object with specific platform and arch, for output directory naming
+    const comboOpts = Object.create(opts)
+    comboOpts.arch = arch
+    comboOpts.platform = platform
 
-        function createApp (comboOpts) {
-          console.error(`Packaging app for platform ${platform} ${arch} using electron v${version}`)
+    const finalPath = common.generateFinalPath(comboOpts)
 
-          var buildDir
-          if (opts.tmpdir === false) {
-            buildDir = common.generateFinalPath(opts)
-          } else {
-            buildDir = path.join(opts.tmpdir || os.tmpdir(), 'electron-packager', `${opts.platform}-${opts.arch}`, common.generateFinalBasename(opts))
-          }
+    return (useTempDir ? promisifiedFs.remove(tempBase) : Promise.resolve())
+      .then(() => {
+        console.log(`Packaging app for platform ${platform} ${arch} using electron v${version}`)
 
-          series([
-            function (cb) {
-              fs.emptyDir(buildDir, cb)
-            },
-            function (cb) {
-              extract(zipPath, {dir: buildDir}, cb)
-            }
-          ], function () {
-            require(supportedPlatforms[platform]).createApp(comboOpts, buildDir, callback)
-          })
+        if (useTempDir && common.isPlatformMac(platform)) {
+          return Promise.promisify(testSymlink)()
+            .then((result) => {
+              if (result) return true
+
+              console.error(`Cannot create symlinks; skipping ${platform} platform`)
+              return false
+            })
         }
-
-        // Create delegated options object with specific platform and arch, for output directory naming
-        var comboOpts = Object.create(opts)
-        comboOpts.arch = arch
-        comboOpts.platform = platform
-
-        if (!useTempDir) {
-          createApp(comboOpts)
-          return
-        }
-
-        function checkOverwrite () {
-          var finalPath = common.generateFinalPath(comboOpts)
-          fs.exists(finalPath, function (exists) {
-            if (exists) {
-              if (opts.overwrite) {
-                fs.remove(finalPath, function () {
-                  createApp(comboOpts)
-                })
-              } else {
-                console.error(`Skipping ${platform} ${arch} (output dir already exists, use --overwrite to force)`)
-                callback()
-              }
-            } else {
-              createApp(comboOpts)
-            }
-          })
-        }
-
-        if (common.isPlatformMac(combination.platform)) {
-          testSymlink(function (result) {
-            if (result) return checkOverwrite()
-
-            console.error(`Cannot create symlinks; skipping ${combination.platform} platform`)
-            callback()
-          })
-        } else {
-          checkOverwrite()
-        }
+        return true
       })
-    }
-  }))
-}
+      .then((valid) => {
+        if (!valid || opts.overwrite) {
+          return valid
+        }
 
-module.exports = function packager (opts, cb) {
-  var archs = validateList(opts.all ? 'all' : opts.arch, supportedArchs, 'arch')
-  var platforms = validateList(opts.all ? 'all' : opts.platform, supportedPlatforms, 'platform')
-  if (!Array.isArray(archs)) return cb(new Error(archs))
-  if (!Array.isArray(platforms)) return cb(new Error(platforms))
+        return promisifiedFs.stat(finalPath)
+          .catchReturn(false)
+          .then((exists) => {
+            if (exists) {
+              console.error(`Skipping ${platform} ${arch} (output dir already exists, use --overwrite to force)`)
+            }
+            return !exists
+          })
+      })
+      .then((valid) => valid ? download(combination) : null)
+      .then((zipPath) => {
+        if (zipPath === null) {
+          return null
+        }
 
-  getNameAndVersion(opts, opts.dir || process.cwd(), function (err) {
-    if (err) {
-      err.message = 'Unable to infer name or version. Please specify a name and version.\n' + err.message
-      return cb(err)
-    }
+        let buildDir
+        if (useTempDir) {
+          buildDir = path.join(tempBase, `${platform}-${arch}`, common.generateFinalBasename(comboOpts))
+        } else {
+          buildDir = finalPath
+        }
 
-    // Ignore this and related modules by default
-    var defaultIgnores = ['/node_modules/electron-prebuilt($|/)', '/node_modules/electron-packager($|/)', '/\\.git($|/)', '/node_modules/\\.bin($|/)']
-
-    if (typeof (opts.ignore) !== 'function') {
-      if (opts.ignore && !Array.isArray(opts.ignore)) opts.ignore = [opts.ignore]
-      opts.ignore = (opts.ignore) ? opts.ignore.concat(defaultIgnores) : defaultIgnores
-    }
-
-    series(createSeries(opts, archs, platforms), function (err, appPaths) {
-      if (err) return cb(err)
-
-      cb(null, appPaths.filter(function (appPath) {
-        // Remove falsy entries (e.g. skipped platforms)
-        return appPath
-      }))
-    })
+        return promisifiedFs.emptyDir(buildDir)
+          .then(() => Promise.promisify(extract)(zipPath, {dir: buildDir}))
+          .then(() => require(supportedPlatforms[platform]).createApp(comboOpts, buildDir))
+          .then(() => {
+            if (useTempDir) {
+              return promisifiedFs.move(buildDir, finalPath, {clobber: true})
+            }
+          })
+      })
+      .thenReturn(finalPath)
   })
 }
+
+function pack (opts) {
+  const archs = validateList(opts.all ? 'all' : opts.arch, supportedArchs, 'arch')
+  const platforms = validateList(opts.all ? 'all' : opts.platform, supportedPlatforms, 'platform')
+  if (!Array.isArray(archs)) return Promise.reject(new Error(archs))
+  if (!Array.isArray(platforms)) return Promise.reject(new Error(new Error(platforms)))
+
+  return getNameAndVersion(opts, opts.dir || process.cwd())
+    .catch((e) => {
+      e.message = 'Unable to infer name or version. Please specify a name and version.\n' + e.message
+      throw e
+    })
+    .then(() => {
+      // Ignore this and related modules by default
+      var defaultIgnores = ['/node_modules/electron-prebuilt($|/)', '/node_modules/electron-packager($|/)', '/\\.git($|/)', '/node_modules/\\.bin($|/)']
+
+      if (typeof (opts.ignore) !== 'function') {
+        if (opts.ignore && !Array.isArray(opts.ignore)) opts.ignore = [opts.ignore]
+        opts.ignore = (opts.ignore) ? opts.ignore.concat(defaultIgnores) : defaultIgnores
+      }
+
+      return createPromise(opts, archs, platforms)
+    })
+    .then(appPaths => appPaths.filter(path => path != null))
+}
+
+module.exports = function (opts, cb) {
+  pack(opts)
+    .then(appPaths => cb(null, appPaths))
+    .catch(cb)
+}
+
+module.exports.pack = pack

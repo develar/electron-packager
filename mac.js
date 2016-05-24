@@ -8,7 +8,7 @@ const sign = require('electron-osx-sign')
 const Promise = require('bluebird')
 
 function rename (basePath, oldName, newName) {
-  return fs.move(path.join(basePath, oldName), path.join(basePath, newName))
+  return fs.rename(path.join(basePath, oldName), path.join(basePath, newName))
 }
 
 function moveHelpers (frameworksPath, appName) {
@@ -50,130 +50,128 @@ function createSignOpts (properties, platform, app) {
 }
 
 module.exports = {
-  createApp: function createApp (opts, templatePath, callback) {
+  createApp: function createApp (opts, tempPath) {
     const appRelativePath = path.join('Electron.app', 'Contents', 'Resources', 'app')
-    common.initializeApp(opts, templatePath, appRelativePath, function buildMacApp (err, tempPath) {
-      if (err) return callback(err)
+    const finalAppPath = path.join(tempPath, `${opts.name}.app`)
+    const contentsPath = path.join(tempPath, 'Electron.app', 'Contents')
+    const frameworksPath = path.join(contentsPath, 'Frameworks')
 
-      const contentsPath = path.join(tempPath, 'Electron.app', 'Contents')
-      const frameworksPath = path.join(contentsPath, 'Frameworks')
-      const appPlistFilename = path.join(contentsPath, 'Info.plist')
-      const helperPlistFilename = path.join(frameworksPath, 'Electron Helper.app', 'Contents', 'Info.plist')
-      const helperEHPlistFilename = path.join(frameworksPath, 'Electron Helper EH.app', 'Contents', 'Info.plist')
-      const helperNPPlistFilename = path.join(frameworksPath, 'Electron Helper NP.app', 'Contents', 'Info.plist')
+    const appPlistFilename = path.join(contentsPath, 'Info.plist')
+    const helperPlistFilename = path.join(frameworksPath, 'Electron Helper.app', 'Contents', 'Info.plist')
+    const helperEHPlistFilename = path.join(frameworksPath, 'Electron Helper EH.app', 'Contents', 'Info.plist')
+    const helperNPPlistFilename = path.join(frameworksPath, 'Electron Helper NP.app', 'Contents', 'Info.plist')
 
-      const finalAppPath = path.join(tempPath, `${opts.name}.app`)
-      Promise.map([appPlistFilename, helperPlistFilename, helperEHPlistFilename, helperNPPlistFilename, opts['extend-info']], (file) => file == null ? null : fs.readFile(file, 'utf8'))
-        .then((fileContents) => {
-          const appPlist = plist.parse(fileContents[0])
-          const helperPlist = plist.parse(fileContents[1])
-          const helperEHPlist = plist.parse(fileContents[2])
-          const helperNPPlist = plist.parse(fileContents[3])
+    return Promise.all([
+      common.initializeApp(opts, tempPath, appRelativePath),
+      Promise.map([appPlistFilename, helperPlistFilename, helperEHPlistFilename, helperNPPlistFilename, opts['extend-info']],
+        (file) => file == null ? null : fs.readFile(file, 'utf8'))
+    ])
+      .then((result) => {
+        const fileContents = result[1]
+        const appPlist = plist.parse(fileContents[0])
+        const helperPlist = plist.parse(fileContents[1])
+        const helperEHPlist = plist.parse(fileContents[2])
+        const helperNPPlist = plist.parse(fileContents[3])
 
-          // If an extend-info file was supplied, copy its contents in first
-          if (opts['extend-info']) {
-            Object.assign(appPlist, plist.parse(fileContents[4]))
-          }
+        // If an extend-info file was supplied, copy its contents in first
+        if (opts['extend-info']) {
+          Object.assign(appPlist, plist.parse(fileContents[4]))
+        }
 
-          // Now set fields based on explicit options
+        // Now set fields based on explicit options
 
-          const appBundleIdentifier = filterCFBundleIdentifier(opts['app-bundle-id'] || 'com.electron.' + opts.name.toLowerCase())
-          const helperBundleIdentifier = filterCFBundleIdentifier(opts['helper-bundle-id'] || appBundleIdentifier + '.helper')
+        const appBundleIdentifier = filterCFBundleIdentifier(opts['app-bundle-id'] || 'com.electron.' + opts.name.toLowerCase())
+        const helperBundleIdentifier = filterCFBundleIdentifier(opts['helper-bundle-id'] || appBundleIdentifier + '.helper')
 
-          const appVersion = opts['app-version']
-          const buildVersion = opts['build-version']
-          const appCategoryType = opts['app-category-type']
-          const humanReadableCopyright = opts['app-copyright']
+        const appVersion = opts['app-version']
+        const buildVersion = opts['build-version']
+        const appCategoryType = opts['app-category-type']
+        const humanReadableCopyright = opts['app-copyright']
 
-          appPlist.CFBundleDisplayName = opts.name
-          appPlist.CFBundleIdentifier = appBundleIdentifier
-          appPlist.CFBundleName = opts.name
-          helperPlist.CFBundleDisplayName = opts.name + ' Helper'
-          helperPlist.CFBundleIdentifier = helperBundleIdentifier
-          appPlist.CFBundleExecutable = common.sanitizeExecutableFilename(opts.name)
-          helperPlist.CFBundleName = opts.name
-          helperPlist.CFBundleExecutable = opts.name + ' Helper'
-          helperEHPlist.CFBundleDisplayName = opts.name + ' Helper EH'
-          helperEHPlist.CFBundleIdentifier = helperBundleIdentifier + '.EH'
-          helperEHPlist.CFBundleName = opts.name + ' Helper EH'
-          helperEHPlist.CFBundleExecutable = opts.name + ' Helper EH'
-          helperNPPlist.CFBundleDisplayName = opts.name + ' Helper NP'
-          helperNPPlist.CFBundleIdentifier = helperBundleIdentifier + '.NP'
-          helperNPPlist.CFBundleName = opts.name + ' Helper NP'
-          helperNPPlist.CFBundleExecutable = opts.name + ' Helper NP'
+        appPlist.CFBundleDisplayName = opts.name
+        appPlist.CFBundleIdentifier = appBundleIdentifier
+        appPlist.CFBundleName = opts.name
+        helperPlist.CFBundleDisplayName = opts.name + ' Helper'
+        helperPlist.CFBundleIdentifier = helperBundleIdentifier
+        appPlist.CFBundleExecutable = common.sanitizeExecutableFilename(opts.name)
+        helperPlist.CFBundleName = opts.name
+        helperPlist.CFBundleExecutable = opts.name + ' Helper'
+        helperEHPlist.CFBundleDisplayName = opts.name + ' Helper EH'
+        helperEHPlist.CFBundleIdentifier = helperBundleIdentifier + '.EH'
+        helperEHPlist.CFBundleName = opts.name + ' Helper EH'
+        helperEHPlist.CFBundleExecutable = opts.name + ' Helper EH'
+        helperNPPlist.CFBundleDisplayName = opts.name + ' Helper NP'
+        helperNPPlist.CFBundleIdentifier = helperBundleIdentifier + '.NP'
+        helperNPPlist.CFBundleName = opts.name + ' Helper NP'
+        helperNPPlist.CFBundleExecutable = opts.name + ' Helper NP'
 
-          if (appVersion) {
-            appPlist.CFBundleShortVersionString = appPlist.CFBundleVersion = '' + appVersion
-          }
+        if (appVersion) {
+          appPlist.CFBundleShortVersionString = appPlist.CFBundleVersion = '' + appVersion
+        }
 
-          if (buildVersion) {
-            appPlist.CFBundleVersion = '' + buildVersion
-          }
+        if (buildVersion) {
+          appPlist.CFBundleVersion = '' + buildVersion
+        }
 
-          if (opts.protocols && opts.protocols.length) {
-            appPlist.CFBundleURLTypes = opts.protocols.map(function (protocol) {
-              return {
-                CFBundleURLName: protocol.name,
-                CFBundleURLSchemes: [].concat(protocol.schemes)
+        if (opts.protocols && opts.protocols.length) {
+          appPlist.CFBundleURLTypes = opts.protocols.map(function (protocol) {
+            return {
+              CFBundleURLName: protocol.name,
+              CFBundleURLSchemes: [].concat(protocol.schemes)
+            }
+          })
+        }
+
+        if (appCategoryType) {
+          appPlist.LSApplicationCategoryType = appCategoryType
+        }
+
+        if (humanReadableCopyright) {
+          appPlist.NSHumanReadableCopyright = humanReadableCopyright
+        }
+
+        const promises = [
+          fs.writeFile(appPlistFilename, plist.build(appPlist)),
+          fs.writeFile(helperPlistFilename, plist.build(helperPlist)),
+          fs.writeFile(helperEHPlistFilename, plist.build(helperEHPlist)),
+          fs.writeFile(helperNPPlistFilename, plist.build(helperNPPlist)),
+          rename(path.join(contentsPath, 'MacOS'), 'Electron', appPlist.CFBundleExecutable)
+        ]
+
+        // Copy in the icon, if supplied
+        if (opts.icon) {
+          promises.push(common.normalizeExt(opts.icon, '.icns')
+            .then((icon) => {
+              if (icon != null) {
+                return fs.copy(icon, path.join(contentsPath, 'Resources', appPlist.CFBundleIconFile))
               }
+            }))
+        }
+
+        // Copy in any other extras
+        let extras = opts['extra-resource']
+        if (extras) {
+          if (!Array.isArray(extras)) extras = [extras]
+          promises.push(Promise.map(extras, (val) => fs.copy(val, path.join(contentsPath, 'Resources', path.basename(val)))))
+        }
+
+        return Promise.all(promises)
+      })
+      .then(() => moveHelpers(frameworksPath, opts.name))
+      .then(() => fs.rename(path.dirname(contentsPath), finalAppPath))
+      .then(() => {
+        if ((opts.platform === 'all' || opts.platform === 'mas') && opts['osx-sign'] === undefined) {
+          console.warn('WARNING: signing is required for mas builds. Provide the osx-sign option, or manually sign the app later.')
+        }
+
+        if (opts['osx-sign']) {
+          return Promise.promisify(sign)(createSignOpts(opts['osx-sign'], opts.platform, finalAppPath))
+            .catch((err) => {
+              // Although not signed successfully, the application is packed.
+              console.warn('Code sign failed; please retry manually.', err)
             })
-          }
-
-          if (appCategoryType) {
-            appPlist.LSApplicationCategoryType = appCategoryType
-          }
-
-          if (humanReadableCopyright) {
-            appPlist.NSHumanReadableCopyright = humanReadableCopyright
-          }
-
-          const promises = [
-            fs.writeFile(appPlistFilename, plist.build(appPlist)),
-            fs.writeFile(helperPlistFilename, plist.build(helperPlist)),
-            fs.writeFile(helperEHPlistFilename, plist.build(helperEHPlist)),
-            fs.writeFile(helperNPPlistFilename, plist.build(helperNPPlist)),
-            rename(path.join(contentsPath, 'MacOS'), 'Electron', appPlist.CFBundleExecutable)
-          ]
-
-          // Copy in the icon, if supplied
-          if (opts.icon) {
-            promises.push(common.normalizeExt(opts.icon, '.icns')
-              .then((icon) => {
-                if (icon != null) {
-                  return fs.copy(icon, path.join(contentsPath, 'Resources', appPlist.CFBundleIconFile))
-                }
-              }))
-          }
-
-          // Copy in any other extras
-          let extras = opts['extra-resource']
-          if (extras) {
-            if (!Array.isArray(extras)) extras = [extras]
-            promises.push(Promise.map(extras, (val) => fs.copy(val, path.join(contentsPath, 'Resources', path.basename(val)))))
-          }
-
-          return Promise.all(promises)
-        })
-        .then(() => moveHelpers(frameworksPath, opts.name))
-        .then(() => fs.move(path.dirname(contentsPath), finalAppPath))
-        .then(() => {
-          if ((opts.platform === 'all' || opts.platform === 'mas') && opts['osx-sign'] === undefined) {
-            console.warn('WARNING: signing is required for mas builds. Provide the osx-sign option, or manually sign the app later.')
-          }
-
-          if (opts['osx-sign']) {
-            return Promise.promisify(sign)(createSignOpts(opts['osx-sign'], opts.platform, finalAppPath))
-              .catch((err) => {
-                // Although not signed successfully, the application is packed.
-                console.warn('Code sign failed; please retry manually.', err)
-              })
-          } else {
-            return Promise.resolve(null)
-          }
-        })
-        .then(() => common.moveApp(opts, tempPath, callback))
-        .catch((e) => callback(e))
-    })
+        }
+      })
   },
   createSignOpts: createSignOpts,
   filterCFBundleIdentifier: filterCFBundleIdentifier

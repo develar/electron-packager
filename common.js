@@ -2,11 +2,9 @@
 
 const asar = require('asar')
 const child = require('child_process')
-const fs = require('fs-extra')
-const promisifiedFs = require('fs-extra-p')
+const fs = require('fs-extra-p')
 const minimist = require('minimist')
 const path = require('path')
-const series = require('run-series')
 const Promise = require('bluebird')
 const sanitize = require('sanitize-filename')
 
@@ -58,16 +56,11 @@ function parseCLIArgs (argv) {
   return args
 }
 
-function asarApp (appPath, asarOptions, cb) {
+function asarApp (appPath, asarOptions) {
   var src = path.join(appPath)
   var dest = path.join(appPath, '..', 'app.asar')
-  asar.createPackageWithOptions(src, dest, asarOptions, function (err) {
-    if (err) return cb(err)
-    fs.remove(src, function (err) {
-      if (err) return cb(err)
-      cb(null, dest)
-    })
-  })
+  return Promise.promisify(asar.createPackageWithOptions)(src, dest, asarOptions)
+    .then(() => fs.remove(src))
 }
 
 function generateFinalBasename (opts) {
@@ -169,69 +162,51 @@ module.exports = {
   generateFinalBasename: generateFinalBasename,
   generateFinalPath: generateFinalPath,
 
-  initializeApp: function initializeApp (opts, buildDir, appRelativePath, callback) {
+  initializeApp: function initializeApp (opts, buildDir, appRelativePath) {
     // Performs the following initial operations for an app:
-    // * Creates temporary directory
-    // * Copies template into temporary directory
     // * Copies user's app into temporary directory
     // * Prunes non-production node_modules (if opts.prune is set)
     // * Creates an asar (if opts.asar is set)
 
     // Path to `app` directory
-    var appPath = path.join(buildDir, appRelativePath)
-    var resourcesPath = path.resolve(appPath, '..')
+    const appPath = path.join(buildDir, appRelativePath)
+    const resourcesPath = path.dirname(appPath)
 
-    var operations = [
-      function (cb) {
-        fs.copy(opts.dir, appPath, {filter: userIgnoreFilter(opts), dereference: true}, cb)
-      },
-      function (cb) {
-        // Support removing old default_app folder that is now an asar archive
-        fs.remove(path.join(resourcesPath, 'default_app'), cb)
-      },
-      function (cb) {
-        fs.remove(path.join(resourcesPath, 'default_app.asar'), cb)
-      }
-    ]
+    let removeDefaultAppPromises
+    if (opts.version != null && opts.version[0] === '0') {
+      // electron release >= 0.37.4 - the default_app/ folder is a default_app.asar file
+      removeDefaultAppPromises = [
+        fs.remove(path.join(resourcesPath, 'default_app.asar')),
+        fs.remove(path.join(resourcesPath, 'default_app'))
+      ]
+    } else {
+      removeDefaultAppPromises = [fs.unlink(path.join(resourcesPath, 'default_app.asar'))]
+    }
+
+    let promise = Promise.all(removeDefaultAppPromises.concat(fs.copy(opts.dir, appPath, {filter: userIgnoreFilter(opts), dereference: true})))
 
     // Prune and asar are now performed before platform-specific logic, primarily so that
     // appPath is predictable (e.g. before .app is renamed for mac)
     if (opts.prune) {
-      operations.push(function (cb) {
-        child.exec('npm prune --production', {cwd: appPath}, cb)
-      })
+      promise = promise
+        .then(() => Promise.promisify(child.exec)('npm prune --production', {cwd: appPath}))
     }
 
     if (opts.asar) {
-      operations.push(function (cb) {
-        var asarOptions = {}
-        if (opts['asar-unpack']) {
-          asarOptions.unpack = opts['asar-unpack']
-        }
-        if (opts['asar-unpack-dir']) {
-          asarOptions.unpackDir = opts['asar-unpack-dir']
-        }
-        asarApp(path.join(appPath), asarOptions, cb)
-      })
+      promise = promise
+        .then(() => {
+          var asarOptions = {}
+          if (opts['asar-unpack']) {
+            asarOptions.unpack = opts['asar-unpack']
+          }
+          if (opts['asar-unpack-dir']) {
+            asarOptions.unpackDir = opts['asar-unpack-dir']
+          }
+          return asarApp(path.join(appPath), asarOptions)
+        })
     }
 
-    series(operations, function (err) {
-      if (err) return callback(err)
-      // Resolve to path to temporary app folder for platform-specific processes to use
-      callback(null, buildDir)
-    })
-  },
-
-  moveApp: function finalizeApp (opts, tempPath, callback) {
-    if (opts.tmpdir === false) {
-      callback(null, tempPath)
-      return
-    }
-
-    var finalPath = generateFinalPath(opts)
-    fs.move(tempPath, finalPath, function (err) {
-      callback(err, finalPath)
-    })
+    return promise
   },
 
   normalizeExt: function normalizeExt (filename, targetExt) {
@@ -247,7 +222,7 @@ module.exports = {
       filename = filename.slice(0, filename.length - ext.length) + targetExt
     }
 
-    return promisifiedFs.stat(filename)
+    return fs.stat(filename)
       .thenReturn(filename)
       .catch((e) => null)
   },
