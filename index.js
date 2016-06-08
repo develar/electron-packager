@@ -12,12 +12,12 @@ const path = require('path')
 const resolve = Promise.promisify(require('resolve'), {multiArgs: true})
 const series = require('run-series')
 
-var supportedArchs = common.archs.reduce(function (result, arch) {
+const supportedArchs = common.archs.reduce(function (result, arch) {
   result[arch] = 1
   return result
 }, {})
 
-var supportedPlatforms = {
+const supportedPlatforms = {
   // Maps to module ID for each platform (lazy-required if used)
   darwin: './mac',
   linux: './linux',

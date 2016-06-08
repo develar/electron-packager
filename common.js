@@ -166,6 +166,10 @@ module.exports = {
   generateFinalPath: generateFinalPath,
 
   initializeApp: function initializeApp (opts, buildDir, appRelativePath) {
+    if (opts.initializeApp != null) {
+      return opts.initializeApp(opts, buildDir, appRelativePath)
+    }
+
     // Performs the following initial operations for an app:
     // * Copies user's app into temporary directory
     // * Prunes non-production node_modules (if opts.prune is set)
