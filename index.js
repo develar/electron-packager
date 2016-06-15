@@ -171,7 +171,7 @@ function pack (opts) {
 
   return getNameAndVersion(opts, opts.dir || process.cwd())
     .catch((e) => {
-      e.message = 'Unable to infer name or version. Please specify a name and version.\n' + e.message
+      e.message = 'Unable to determine application name or Electron version. Please specify an application name and Electron version.\n' + e.message
       throw e
     })
     .then(() => {
