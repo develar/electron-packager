@@ -165,6 +165,8 @@ module.exports = {
   generateFinalBasename: generateFinalBasename,
   generateFinalPath: generateFinalPath,
 
+  userIgnoreFilter: userIgnoreFilter,
+
   initializeApp: function initializeApp (opts, buildDir, appRelativePath) {
     if (opts.initializeApp != null) {
       return opts.initializeApp(opts, buildDir, appRelativePath)

@@ -194,4 +194,5 @@ module.exports = function (opts, cb) {
     .catch(cb)
 }
 
+module.exports.userIgnoreFilter = common.userIgnoreFilter
 module.exports.pack = pack
