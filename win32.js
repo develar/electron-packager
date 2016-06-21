@@ -6,10 +6,12 @@ const path = require('path')
 const Promise = require('bluebird')
 
 module.exports = {
-  createApp: function createApp (opts, buildDir) {
+  createApp: (opts, buildDir) => {
     const newExePath = path.join(buildDir, `${common.sanitizeExecutableFilename(opts.name)}.exe`)
-    return common.initializeApp(opts, buildDir, path.join('resources', 'app'))
-      .then(() => fs.rename(path.join(buildDir, 'electron.exe'), newExePath))
+    return Promise.all([
+      common.initializeApp(opts, buildDir, path.join('resources', 'app')),
+      fs.rename(path.join(buildDir, 'electron.exe'), newExePath)
+    ])
       .then(() => {
         const rcOpts = {'version-string': opts['version-string'] || {}}
 

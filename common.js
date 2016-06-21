@@ -226,7 +226,7 @@ module.exports = {
     // This error path is used by win32.js if no icon is specified
     if (!filename) return Promise.resolve(null)
 
-    var ext = path.extname(filename)
+    const ext = path.extname(filename)
     if (ext !== targetExt) {
       filename = filename.slice(0, filename.length - ext.length) + targetExt
     }

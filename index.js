@@ -99,7 +99,7 @@ function createPromise (opts, archs, platforms) {
   return Promise.mapSeries(combinations, (combination) => {
     const arch = combination.arch
     const platform = combination.platform
-    const version = combination.version
+    // const version = combination.version
 
     // Create delegated options object with specific platform and arch, for output directory naming
     const comboOpts = Object.create(opts)
@@ -110,7 +110,7 @@ function createPromise (opts, archs, platforms) {
 
     return (useTempDir ? promisifiedFs.remove(tempBase) : Promise.resolve())
       .then(() => {
-        console.log(`Packaging app for platform ${platform} ${arch} using electron ${version} to ${path.relative(process.cwd(), finalPath)}`)
+        // console.log(`Packaging app for platform ${platform} ${arch} using electron ${version} to ${path.relative(process.cwd(), finalPath)}`)
 
         if (useTempDir && common.isPlatformMac(platform)) {
           return Promise.promisify(testSymlink)()
