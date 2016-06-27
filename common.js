@@ -6,7 +6,6 @@ const fs = require('fs-extra-p')
 const minimist = require('minimist')
 const path = require('path')
 const Promise = require('bluebird')
-const sanitize = require('sanitize-filename')
 
 var archs = ['ia32', 'x64']
 var platforms = ['darwin', 'linux', 'mas', 'win32']
@@ -234,9 +233,5 @@ module.exports = {
     return fs.stat(filename)
       .thenReturn(filename)
       .catch((e) => null)
-  },
-
-  sanitizeExecutableFilename: function (name) {
-    return sanitize(name)
   }
 }

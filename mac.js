@@ -6,6 +6,7 @@ const path = require('path')
 const plist = require('plist')
 const sign = require('electron-osx-sign')
 const Promise = require('bluebird')
+const sanitize = require('sanitize-filename')
 
 function rename (basePath, oldName, newName) {
   return fs.rename(path.join(basePath, oldName), path.join(basePath, newName))
@@ -51,8 +52,10 @@ function createSignOpts (properties, platform, app) {
 
 module.exports = {
   createApp: function createApp (opts, tempPath) {
+    const appFilename = sanitize(opts.name)
+
     const appRelativePath = path.join('Electron.app', 'Contents', 'Resources', 'app')
-    const finalAppPath = path.join(tempPath, `${opts.name}.app`)
+    const finalAppPath = path.join(tempPath, `${appFilename}.app`)
     const contentsPath = path.join(tempPath, 'Electron.app', 'Contents')
     const frameworksPath = path.join(contentsPath, 'Frameworks')
 
@@ -80,7 +83,7 @@ module.exports = {
 
         // Now set fields based on explicit options
 
-        const appBundleIdentifier = filterCFBundleIdentifier(opts['app-bundle-id'] || 'com.electron.' + opts.name.toLowerCase())
+        const appBundleIdentifier = filterCFBundleIdentifier(opts['app-bundle-id'] || 'com.electron.' + appFilename.toLowerCase())
         const helperBundleIdentifier = filterCFBundleIdentifier(opts['helper-bundle-id'] || appBundleIdentifier + '.helper')
 
         const appVersion = opts['app-version']
@@ -93,17 +96,17 @@ module.exports = {
         appPlist.CFBundleName = opts.name
         helperPlist.CFBundleDisplayName = opts.name + ' Helper'
         helperPlist.CFBundleIdentifier = helperBundleIdentifier
-        appPlist.CFBundleExecutable = common.sanitizeExecutableFilename(opts.name)
+        appPlist.CFBundleExecutable = appFilename
         helperPlist.CFBundleName = opts.name
-        helperPlist.CFBundleExecutable = opts.name + ' Helper'
-        helperEHPlist.CFBundleDisplayName = opts.name + ' Helper EH'
+        helperPlist.CFBundleExecutable = appFilename + ' Helper'
+        helperEHPlist.CFBundleDisplayName = appFilename + ' Helper EH'
         helperEHPlist.CFBundleIdentifier = helperBundleIdentifier + '.EH'
         helperEHPlist.CFBundleName = opts.name + ' Helper EH'
-        helperEHPlist.CFBundleExecutable = opts.name + ' Helper EH'
+        helperEHPlist.CFBundleExecutable = appFilename + ' Helper EH'
         helperNPPlist.CFBundleDisplayName = opts.name + ' Helper NP'
         helperNPPlist.CFBundleIdentifier = helperBundleIdentifier + '.NP'
         helperNPPlist.CFBundleName = opts.name + ' Helper NP'
-        helperNPPlist.CFBundleExecutable = opts.name + ' Helper NP'
+        helperNPPlist.CFBundleExecutable = appFilename + ' Helper NP'
 
         if (appVersion) {
           appPlist.CFBundleShortVersionString = appPlist.CFBundleVersion = '' + appVersion
@@ -157,7 +160,7 @@ module.exports = {
 
         return Promise.all(promises)
       })
-      .then(() => moveHelpers(frameworksPath, opts.name))
+      .then(() => moveHelpers(frameworksPath, appFilename))
       .then(() => fs.rename(path.dirname(contentsPath), finalAppPath))
       .then(() => {
         if ((opts.platform === 'all' || opts.platform === 'mas') && opts['osx-sign'] === undefined) {

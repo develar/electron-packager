@@ -4,10 +4,11 @@ const common = require('./common')
 const fs = require('fs-extra-p')
 const path = require('path')
 const Promise = require('bluebird')
+const sanitize = require('sanitize-filename')
 
 module.exports = {
   createApp: (opts, buildDir) => {
-    const newExePath = path.join(buildDir, `${common.sanitizeExecutableFilename(opts.name)}.exe`)
+    const newExePath = path.join(buildDir, `${sanitize(opts.name)}.exe`)
     return Promise.all([
       common.initializeApp(opts, buildDir, path.join('resources', 'app')),
       fs.rename(path.join(buildDir, 'electron.exe'), newExePath)
